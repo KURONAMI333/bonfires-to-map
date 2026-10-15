@@ -25,7 +25,7 @@
     "fabric-api":   "*",
     "minecraft":    "~1.20.1",
     "java":         ">=17",
-    "bonfires":     ">=1.2"
+    "bonfires":     "*"
   },
 
   "suggests": {
