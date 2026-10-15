@@ -168,6 +168,14 @@ tasks.named('check') {
     dependsOn verifyNoTestScaffoldingInJar
 }
 
+// LICENSE jar 同梱（NeoForge セル。LICENSE は repo root にのみ置く。inputs.file で不在時に build を落とす）
+def licenseFile = file('LICENSE')
+def licenseRenamed = "LICENSE_${mod_id}"
+tasks.named('jar', Jar).configure {
+    inputs.file(licenseFile)
+    from(licenseFile) { rename { licenseRenamed } }
+}
+
 idea {
     module {
         downloadSources = true
