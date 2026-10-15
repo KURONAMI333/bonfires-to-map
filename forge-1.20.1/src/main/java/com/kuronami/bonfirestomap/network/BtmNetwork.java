@@ -67,6 +67,11 @@ public final class BtmNetwork {
 
     /** 差分検出済みの全量スナップショットをこのプレイヤーへだけ送る。 */
     public static void sendBonfires(ServerPlayer player, Map<UUID, PointSnapshot> state) {
+        // 本 MOD を持たないクライアント（チャネル未宣言）へは送らない。
+        // NeoForge の optional payload / Fabric の canSend に相当する送信側ガード。
+        if (!CHANNEL.isRemotePresent(player.connection.connection)) {
+            return;
+        }
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), BonfireSyncPacket.of(state));
     }
 }
