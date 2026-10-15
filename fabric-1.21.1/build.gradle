@@ -27,11 +27,13 @@ repositories {
 configurations {
     journeyMapBundle
     bonfiresBundle
+    owoLibBundle
 }
 
 dependencies {
     journeyMapBundle "maven.modrinth:journeymap:${jm_version}"
     bonfiresBundle "maven.modrinth:bonfires:${bonfires_version}"
+    owoLibBundle "maven.modrinth:owo-lib:${owo_lib_version}"
 
     minecraft "com.mojang:minecraft:${minecraft_version}"
     // Mojang 公式マッピング使用 (ResourceLocation/Component 等 NeoForge と同名)
@@ -64,6 +66,27 @@ dependencies {
     // ─── Dev-only (runClient テスト用・published jar には漏らさない) ───
     modRuntimeOnly "maven.modrinth:journeymap:${jm_version}"
     modRuntimeOnly "maven.modrinth:bonfires:${bonfires_version}"
+    modRuntimeOnly "maven.modrinth:owo-lib:${owo_lib_version}"
+    // Loom 1.17 は remap 時に fabric.mod.json の jars を削除し、同梱 (JiJ) の mod を dev runtime へ
+    // 載せない。親 mod・必須依存に同梱された実物 jar をそのまま抜き出して供給する（published jar には漏れない）。
+    // owo-lib の同梱 (endec / jankson 等)
+    modRuntimeOnly files(provider {
+        zipTree(configurations.owoLibBundle.singleFile).matching {
+            include 'META-INF/jars/*.jar'
+        }.files
+    })
+    // Bonfires の同梱 (cardinal-components-base/world/entity)
+    modRuntimeOnly files(provider {
+        zipTree(configurations.bonfiresBundle.singleFile).matching {
+            include 'META-INF/jars/*.jar'
+        }.files
+    })
+    // JourneyMap の同梱 (commonnetworking / journeymap-api-fabric / pngj)
+    modRuntimeOnly files(provider {
+        zipTree(configurations.journeyMapBundle.singleFile).matching {
+            include 'META-INF/jars/*.jar'
+        }.files
+    })
 }
 
 // テストは repo root の 1 コピーを共有する（4 セルで重複させない）
