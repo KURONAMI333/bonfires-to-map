@@ -26,6 +26,11 @@ minecraft {
             workingDirectory project.file('run')
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
+            // dev 実行で fg.deobf 依存 (JourneyMap / Xaero) の refmap を SRG→開発名へ remap させる。
+            // ForgeGradle は deobf jar 内の refmap を remap しないため、これが無いと mixin 適用に失敗する。
+            // dev 専用の実行設定で、published jar には影響しない。
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             mods {
                 "${mod_id}" {
                     source sourceSets.main
