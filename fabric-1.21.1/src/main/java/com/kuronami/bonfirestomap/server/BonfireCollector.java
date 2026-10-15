@@ -7,6 +7,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 
+import wehavecookies56.bonfires.Bonfires;
 import wehavecookies56.bonfires.bonfire.Bonfire;
 import wehavecookies56.bonfires.bonfire.BonfireRegistry;
 import wehavecookies56.bonfires.data.BonfireHandler;
@@ -68,6 +69,21 @@ public final class BonfireCollector {
         static Map<UUID, PointSnapshot> collect(ServerPlayer player) {
             Map<UUID, PointSnapshot> result = new LinkedHashMap<>();
 
+            BonfireHandler.IBonfireHandler handler = BonfireHandler.getServerHandler(player.server);
+            if (handler == null || handler.getRegistry() == null) {
+                return result;
+            }
+            BonfireRegistry registry = handler.getRegistry();
+
+            if (!Bonfires.CONFIG.common.bonfireDiscoveryMode()) {
+                // 発見モード無効時は旅行メニュー（Bonfires BonfireScreen#createSeries）と同じ集合
+                // 「公開＋自分の非公開」を送る（発見の有無に関わらない）。
+                for (Bonfire bonfire : registry.getPrivateBonfiresByOwnerAndPublic(player.getUUID())) {
+                    addBonfire(result, bonfire);
+                }
+                return result;
+            }
+
             DiscoveryHandler.IDiscoveryHandler discovery = DiscoveryHandler.getHandler(player);
             if (discovery == null) {
                 return result;
@@ -77,32 +93,34 @@ public final class BonfireCollector {
                 return result;
             }
 
-            BonfireHandler.IBonfireHandler handler = BonfireHandler.getServerHandler(player.server);
-            if (handler == null || handler.getRegistry() == null) {
-                return result;
-            }
-            BonfireRegistry registry = handler.getRegistry();
-
             for (UUID id : discovered.keySet()) {
                 Bonfire bonfire = registry.getBonfire(id);
                 if (bonfire == null) {
                     continue; // 発見記録が残っていても登録から消えている篝火は送らない
                 }
-                BlockPos pos = bonfire.getPos();
-                if (pos == null || bonfire.getDimension() == null) {
-                    continue;
-                }
-                String name = bonfire.getName();
-                result.put(id, new PointSnapshot(
-                        id,
-                        name == null ? "" : name,
-                        pos.getX(),
-                        pos.getY(),
-                        pos.getZ(),
-                        bonfire.getDimension().location().toString(),
-                        FIXED_RGB));
+                addBonfire(result, bonfire);
             }
             return result;
+        }
+
+        /** 1 件をスナップショットへ写す。座標・次元が欠落した登録は送らない。 */
+        private static void addBonfire(Map<UUID, PointSnapshot> result, Bonfire bonfire) {
+            if (bonfire == null) {
+                return;
+            }
+            BlockPos pos = bonfire.getPos();
+            if (pos == null || bonfire.getDimension() == null) {
+                return;
+            }
+            String name = bonfire.getName();
+            result.put(bonfire.getId(), new PointSnapshot(
+                    bonfire.getId(),
+                    name == null ? "" : name,
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ(),
+                    bonfire.getDimension().location().toString(),
+                    FIXED_RGB));
         }
     }
 }
