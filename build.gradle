@@ -1,0 +1,176 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.141'
+    id 'idea'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+
+    runs {
+        client {
+            client()
+        }
+
+        server {
+            server()
+            programArgument '--nogui'
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.DEBUG
+            loadedMods = [project.neoForge.mods.getByName(mod_id)]
+        }
+    }
+}
+
+repositories {
+    // JourneyMap API (TeamJM 公式 maven)
+    maven {
+        name = "JourneyMap (TeamJM)"
+        url = "https://jm.gserv.me/repository/maven-public/"
+    }
+    // Bonfires 本体 (Modrinth maven)
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
+}
+
+dependencies {
+    // JourneyMap API: waypoint 登録用（クライアントのみ実体動作・SNAPSHOT は changing）
+    compileOnly("info.journeymap:journeymap-api-neoforge:${jmap_api_version}") {
+        changing = true
+    }
+
+    // Bonfires: 篝火データの供給源（公開 API wehavecookies56.bonfires.* のみ使用）。
+    compileOnly("maven.modrinth:bonfires:${bonfires_version}")
+
+    // ─── runClient 用ローカルランタイム（published jar には漏らさない）───
+    localRuntime "maven.modrinth:journeymap:${jm_version}"
+    localRuntime "maven.modrinth:bonfires:${bonfires_version}"
+
+    // 差分同期エンジンの単体テスト（純粋関数＝MC クラスパス不要）
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            loader_version_range   : loader_version_range,
+            bonfires_version       : bonfires_version,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_description        : mod_description,
+            mod_authors            : mod_authors,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// 出荷 jar に テスト足場が混入していないことを機械検査する
+// （PLAYBOOK_GAMETEST Phase 1・mod-066 の multiloader 版を single-project 向けに移植）
+def verifyNoTestScaffoldingInJar = tasks.register("verifyNoTestScaffoldingInJar") {
+    group = 'verification'
+    description = 'Fails if test scaffolding leaked into the published jar.'
+    dependsOn tasks.named('jar')
+
+    doLast {
+        def jarFile = tasks.named('jar', Jar).get().archiveFile.get().asFile
+        def bad = []
+        jarFile.withInputStream { ins ->
+            def jis = new java.util.jar.JarInputStream(ins)
+            java.util.jar.JarEntry entry
+            while ((entry = jis.nextJarEntry) != null) {
+                def name = entry.name
+                if (name.contains('gametest') || name =~ /tests?\// || name.endsWith('Test.class') || name.endsWith('Tests.class')) {
+                    bad << name
+                }
+                if (name.endsWith('.class')) {
+                    def bytes = jis.readAllBytes()
+                    def pool = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                    ['net/minecraft/gametest', 'RegisterGameTestsEvent', 'GameTestInstance', 'GameTestHelper', 'TEST_INSTANCE'].each { marker ->
+                        if (pool.contains(marker)) bad << "${name} [refs ${marker}]"
+                    }
+                }
+            }
+        }
+        if (bad) {
+            throw new GradleException("Test scaffolding found in ${jarFile.name}:\n  " + bad.join('\n  '))
+        }
+        println "verifyNoTestScaffoldingInJar: OK (${jarFile.name})"
+    }
+}
+
+tasks.named('check') {
+    dependsOn verifyNoTestScaffoldingInJar
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

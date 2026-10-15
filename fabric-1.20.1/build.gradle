@@ -1,0 +1,105 @@
+plugins {
+    id 'fabric-loom' version '1.17.19'
+    id 'maven-publish'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+repositories {
+    // Modrinth maven (Bonfires / JourneyMap)
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
+}
+
+configurations {
+    journeyMapBundle
+    bonfiresBundle
+}
+
+dependencies {
+    journeyMapBundle "maven.modrinth:journeymap:${jm_version}"
+    bonfiresBundle "maven.modrinth:bonfires:${bonfires_version}"
+
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    // Mojang 公式マッピング使用 (ResourceLocation/Component 等 NeoForge と同名)
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+
+    // ─── Production (compileOnly: jar に含めない) ─────────────────
+    // Bonfires 本体（公開 API wehavecookies56.bonfires.* のみ使用）
+    modCompileOnly "maven.modrinth:bonfires:${bonfires_version}"
+    // Cardinal Components API: Bonfires の component 型の supertypes 解決に javac が要求する。
+    // Bonfires 本体が JiJ で同梱している実物（1.20.1 は 5.2.2）をそのまま抜き出して版を一致させる。
+    modCompileOnly files(provider {
+        zipTree(configurations.bonfiresBundle.singleFile).matching {
+            include 'META-INF/jars/cardinal-components-*.jar'
+        }.files
+    })
+    // JourneyMap API: 本体 jar 同梱の api jar を抜き出して使う（mod-003 fabric-1.20.1 と同方式）
+    modCompileOnly files(provider {
+        zipTree(configurations.journeyMapBundle.singleFile).matching {
+            include 'META-INF/jars/journeymap-api-fabric-*.jar'
+        }.files
+    })
+
+    // 差分同期エンジンの単体テスト（純粋関数＝MC クラスパス不要）
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // ─── Dev-only (runClient テスト用・published jar には漏らさない) ───
+    modRuntimeOnly "maven.modrinth:journeymap:${jm_version}"
+    modRuntimeOnly "maven.modrinth:bonfires:${bonfires_version}"
+}
+
+// テストは repo root の 1 コピーを共有する（4 セルで重複させない）
+sourceSets.test.java.srcDir '../src/test/java'
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
+
+test {
+    useJUnitPlatform()
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": minecraft_version,
+                "loader_version": loader_version,
+                "fabric_version": fabric_version,
+                "mod_id": mod_id,
+                "mod_name": mod_name,
+                "mod_description": mod_description,
+                "mod_authors": mod_authors,
+                "mod_license": mod_license
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 17
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+// LICENSE jar 同梱（repo root にのみ置く。各 cell は独立 build なので相対参照する）
+def licenseFile = file("../LICENSE")
+jar {
+    inputs.file(licenseFile)
+    from(licenseFile) {
+        rename { "${it}_${mod_id}" }
+    }
+}

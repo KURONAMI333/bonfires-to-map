@@ -1,0 +1,48 @@
+# Bonfires to Map - neoforge.mods.toml
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://x.com/kuronami333"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+displayURL="https://www.curseforge.com/minecraft/mc-mods/bonfires-to-map"
+description='''
+${mod_description}
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Bonfires: 機能の供給源（篝火レジストリとプレイヤー別の発見記録を読む）。
+# サーバー側でもデータを読むため side 制約は掛けない（両 dist で required）。
+# versionRange は Bonfires の版が複合文字列（例 1.2.20b-1.21.1-neoforge）のため
+# 下限を緩く取る（下限に複合版を書くと一致しない罠を避ける）。
+[[dependencies.${mod_id}]]
+    modId="bonfires"
+    type="required"
+    versionRange="[1.2,)"
+    ordering="AFTER"
+
+# JourneyMap: 任意。不在では静かに何もしない（Inner class isolation）。
+# JM 自体がクライアント専用 MOD なので宣言も CLIENT に限定。
+[[dependencies.${mod_id}]]
+    modId="journeymap"
+    type="optional"
+    versionRange="[1,)"
+    ordering="AFTER"
+    side="CLIENT"

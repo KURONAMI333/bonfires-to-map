@@ -1,0 +1,174 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0.16,6.2)'
+    id 'org.parchmentmc.librarian.forgegradle' version '1.+'
+    id 'java-library'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)  // 1.20.1 = Java 17
+
+minecraft {
+    mappings channel: 'parchment', version: "${parchment_mappings_version}-${parchment_minecraft_version}"
+
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+        client { workingDirectory project.file('run') }
+    }
+}
+
+repositories {
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
+    maven {
+        name = 'ParchmentMC'
+        url = 'https://maven.parchmentmc.org'
+    }
+}
+
+// JourneyMap API v2 の調達（mod-075 forge-1.20.1 と同方式）。
+// TeamJM 公式 Maven の 1.20.1 系 artifact は v1 API のみ。JM 本体 (Forge 1.20.1) の
+// META-INF/jarjar/ 内に v2 の journeymap-api-forge-1.20.1-2.0.0.jar が入っているので、
+// 本体 jar を Modrinth から取得して api を抜き出し compile classpath へ載せる。
+configurations {
+    jmApiSource
+}
+
+def extractJourneymapApi = tasks.register('extractJourneymapApi', Copy) {
+    dependsOn configurations.jmApiSource
+    from({ zipTree(configurations.jmApiSource.singleFile) }) {
+        include 'META-INF/jarjar/journeymap-api-*.jar'
+        eachFile { it.relativePath = new RelativePath(true, it.name) }
+    }
+    into layout.buildDirectory.dir('jm-api')
+    includeEmptyDirs = false
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Bonfires 本体: 篝火データの供給源（公開 API wehavecookies56.bonfires.* のみ使用）。
+    // 実配布 jar を fg.deobf で載せる。
+    compileOnly fg.deobf("maven.modrinth:bonfires:${bonfires_version}")
+
+    // JourneyMap API v2（上記 extractJourneymapApi の産物。JM 本体と同じ v2.0.0）
+    compileOnly(fileTree(dir: layout.buildDirectory.dir('jm-api'), builtBy: ['extractJourneymapApi']))
+
+    // JourneyMap 本体 (Forge 1.20.1)。jarjar からの api 抽出源＋dev 実機確認用 runtime
+    jmApiSource("maven.modrinth:journeymap:${journeymap_version_id}")
+    runtimeOnly fg.deobf("maven.modrinth:journeymap:${journeymap_version_id}")
+    // Bonfires 本体を dev 実行にも載せる（runClient 実機確認用・published jar には漏れない）
+    runtimeOnly fg.deobf("maven.modrinth:bonfires:${bonfires_version}")
+
+    // 差分同期エンジンの単体テスト（純粋関数＝MC クラスパス不要）
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// テストは repo root の 1 コピーを共有する（4 セルで重複させない）
+sourceSets.test.java.srcDir '../src/test/java'
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            forge_version          : forge_version,
+            forge_version_range    : forge_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// 出荷 jar にテスト用足場が混入していないことを機械検査する（root セルと同型のゲート）
+def verifyNoTestScaffoldingInJar = tasks.register("verifyNoTestScaffoldingInJar") {
+    group = 'verification'
+    description = 'Fails if test scaffolding leaked into the published jar.'
+    dependsOn tasks.named('jar')
+
+    doLast {
+        def jarFile = tasks.named('jar', Jar).get().archiveFile.get().asFile
+        def bad = []
+        jarFile.withInputStream { ins ->
+            def jis = new java.util.jar.JarInputStream(ins)
+            java.util.jar.JarEntry entry
+            while ((entry = jis.nextJarEntry) != null) {
+                def name = entry.name
+                if (name.contains('gametest') || name =~ /tests?\// || name.endsWith('Test.class') || name.endsWith('Tests.class')) {
+                    bad << name
+                }
+            }
+        }
+        if (bad) {
+            throw new GradleException("Test scaffolding found in ${jarFile.name}:\n  " + bad.join('\n  '))
+        }
+        println "verifyNoTestScaffoldingInJar: OK (${jarFile.name})"
+    }
+}
+
+tasks.named('check') {
+    dependsOn verifyNoTestScaffoldingInJar
+}
+
+// LICENSE jar 同梱（LICENSE は repo root にのみ置く。inputs.file で不在時に build を落とす）
+def licenseFile = file('../LICENSE')
+def licenseRenamed = "LICENSE_${mod_id}"
+tasks.named('jar', Jar).configure {
+    inputs.file(licenseFile)
+    from(licenseFile) { rename { licenseRenamed } }
+}
