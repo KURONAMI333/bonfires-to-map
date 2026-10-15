@@ -22,8 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 「そのプレイヤーが発見済みの篝火」スナップショットに変化があればそのプレイヤーへだけ
  * payload を送る。ログイン直後にも必ず 1 回送る。
  *
- * <p>これらのイベントはサーバー dist でしか発火しない。クライアント dist では
- * ハンドラが走らないため Bonfires 関連クラスもロードされない。</p>
+ * <p>これらのイベントはサーバー側で発火する。専用サーバーだけでなく、シングルプレイの
+ * 統合サーバー（クライアントと同一 JVM で動く）でも発火する。クライアント dist の
+ * クライアント側 tick では発火しない。</p>
  */
 public final class ServerBonfireWatcher {
 

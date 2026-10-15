@@ -22,8 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * ログイン直後にも必ず 1 回送る。ロジックは 109 本体と同一で、イベント差し替えのみ
  * （TickEvent の phase 確認と ServerLifecycleHooks 経由の server 解決が 1.20.1 流）。
  *
- * <p>これらのイベントはサーバー dist / 統合サーバーの tick でしか発火しない。クライアント dist
- * 単独ではハンドラが走らず Bonfires 関連クラスもロードされない。</p>
+ * <p>これらのイベントはサーバー側で発火する。専用サーバーだけでなく、シングルプレイの
+ * 統合サーバー（クライアントと同一 JVM で動く）でも発火する。クライアント dist の
+ * クライアント側 tick では発火しない。</p>
  */
 public final class ServerBonfireWatcher {
 
