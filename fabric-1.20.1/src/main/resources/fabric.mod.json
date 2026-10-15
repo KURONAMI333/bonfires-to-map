@@ -5,6 +5,7 @@
   "name": "${mod_name}",
   "description": "${mod_description}",
   "authors": ["${mod_authors}"],
+  "icon": "logo.png",
   "contact": {
     "homepage": "https://www.curseforge.com/minecraft/mc-mods/bonfires-to-map",
     "issues":   "https://www.curseforge.com/minecraft/mc-mods/bonfires-to-map/comments",

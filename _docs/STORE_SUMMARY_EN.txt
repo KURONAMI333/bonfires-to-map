@@ -1,0 +1,1 @@
+Show the Bonfires you have discovered as JourneyMap waypoints, and remove them when the bonfire is destroyed.
