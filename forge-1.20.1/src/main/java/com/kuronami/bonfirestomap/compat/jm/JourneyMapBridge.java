@@ -134,7 +134,7 @@ public final class JourneyMapBridge {
                 UUID id = snapshot.id();
                 Waypoint wp = createWaypoint(snapshot);
                 if (wp == null) {
-                    continue; // 次元が壊れた巻物。既存の実体は消さずそのまま残す
+                    continue; // 次元が読めない登録。既存の実体は消さずそのまま残す
                 }
                 Waypoint previous = LIVE.remove(id);
                 if (previous != null) {
@@ -149,7 +149,7 @@ public final class JourneyMapBridge {
             return true;
         }
 
-        /** 行き先の次元が ResourceLocation として解釈できない巻物は null を返す（この 1 件だけ捨てる）。 */
+        /** 行き先の次元が ResourceLocation として解釈できない登録は null を返す（この 1 件だけ捨てる）。 */
         static Waypoint createWaypoint(PointSnapshot s) {
             // 1.20.1 の srg jar には ResourceLocation.parse が無い版がある（tryParse は全版にある）
             ResourceLocation location = ResourceLocation.tryParse(s.dimensionId());
