@@ -98,15 +98,20 @@ public final class JourneyMapBridge {
             List<PointSnapshot> ordered = desired.values().stream()
                     .sorted(Comparator.comparing(PointSnapshot::id))
                     .toList();
+            int created = 0;
             for (PointSnapshot snapshot : ordered) {
                 Waypoint wp = createWaypoint(snapshot);
+                if (wp == null) {
+                    continue;
+                }
                 LIVE.put(snapshot.id(), wp);
                 api.addWaypoint(BonfiresToMap.MODID, wp);
                 BonfiresToMap.LOGGER.debug("Waypoint created: {} @ ({}, {}, {}) in {} color=#{}",
                         snapshot.name(), snapshot.x(), snapshot.y(), snapshot.z(), snapshot.dimensionId(),
                         String.format("%06x", snapshot.rgb()));
+                created++;
             }
-            BonfiresToMap.LOGGER.info("Rebuilt {} Bonfires waypoint(s) on JourneyMap", ordered.size());
+            BonfiresToMap.LOGGER.info("Rebuilt {} Bonfires waypoint(s) on JourneyMap", created);
             return true;
         }
 
@@ -127,11 +132,14 @@ public final class JourneyMapBridge {
 
             for (PointSnapshot snapshot : plan.upserts()) {
                 UUID id = snapshot.id();
+                Waypoint wp = createWaypoint(snapshot);
+                if (wp == null) {
+                    continue; // 次元が壊れた巻物。既存の実体は消さずそのまま残す
+                }
                 Waypoint previous = LIVE.remove(id);
                 if (previous != null) {
                     api.removeWaypoint(BonfiresToMap.MODID, previous);
                 }
-                Waypoint wp = createWaypoint(snapshot);
                 LIVE.put(id, wp);
                 api.addWaypoint(BonfiresToMap.MODID, wp);
                 BonfiresToMap.LOGGER.debug("Waypoint upserted: {} @ ({}, {}, {}) in {} color=#{}",
@@ -141,9 +149,15 @@ public final class JourneyMapBridge {
             return true;
         }
 
+        /** 行き先の次元が ResourceLocation として解釈できない巻物は null を返す（この 1 件だけ捨てる）。 */
         static Waypoint createWaypoint(PointSnapshot s) {
-            ResourceKey<Level> dimension = ResourceKey.create(
-                    Registries.DIMENSION, ResourceLocation.parse(s.dimensionId()));
+            // 1.20.1 の srg jar には ResourceLocation.parse が無い版がある（tryParse は全版にある）
+            ResourceLocation location = ResourceLocation.tryParse(s.dimensionId());
+            if (location == null) {
+                BonfiresToMap.LOGGER.debug("Skipping waypoint with unreadable dimension: {}", s.dimensionId());
+                return null;
+            }
+            ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, location);
             // 永続 waypoint 固定（v1.0 の製品挙動）。
             // 1.20.1 の v2 API には createClientWaypoint が無く createWaypoint のみ
             // （引数順は 1.21.1 の createClientWaypoint と同一・javap 突合済み）
